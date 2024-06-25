@@ -2,7 +2,6 @@ package apiserver
 
 import (
 	"log"
-	"net/http"
 
 	"github.com/gola/internal/conf"
 	"github.com/gola/internal/storage"
@@ -16,8 +15,8 @@ func Start(config *conf.Config) error {
 		return err
 	}
 
-	srv := NewServer(&r)
-	http.ListenAndServe(config.Addr, srv)
+	srv := NewServer(&r, config.Addr)
+	srv.Run()
 
 	return nil
 }

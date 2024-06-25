@@ -7,36 +7,44 @@ import (
 
 	"github.com/gola/internal/model"
 	"github.com/gola/internal/storage"
-	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 )
 
-type Server struct {
-	router mux.Router
+type APIServer struct {
+	addr   string
 	logger logrus.Logger
 	repo   storage.Repo
 }
 
-func NewServer(r *storage.Repo) *Server {
-	s := &Server{
-		router: *mux.NewRouter(),
+func NewServer(r *storage.Repo, addr string) *APIServer {
+	return &APIServer{
+		addr:   addr,
 		logger: *logrus.New(),
 		repo:   *r,
 	}
-
-	s.configure()
-
-	return s
 }
 
-func (s *Server) configure() {
-	// ...
-	s.router.HandleFunc("/nodes", s.createHandlerCreateNode()).Methods("POST")
-	s.router.HandleFunc("/nodes", s.createHandlerGetAllNodes()).Methods("GET")
-	s.router.HandleFunc("/nodes/{id}", s.createHandlerGetNode()).Methods("GET")
+func (s *APIServer) Run() error {
+
+	router := http.NewServeMux()
+
+	server := http.Server{
+		Addr:    s.addr,
+		Handler: MiddlewareChain(MakeTrackingMiddlware, MakeLoggingMiddleware)(router),
+	}
+
+	router.HandleFunc("POST /nodes", s.handlerCreateNode())
+	router.HandleFunc("GET /nodes", s.handlerGetAllNodes())
+	router.HandleFunc("GET /nodes/{id}", s.handlerGetNodeById())
+
+	router.HandleFunc("POST /edges", s.handlerCreateEdge())
+	router.HandleFunc("GET /edges", s.handlerGetAllEdges())
+	router.HandleFunc("GET /edges/{id}", s.handlerGetEdgesByNodeID())
+
+	return server.ListenAndServe()
 }
 
-func (s *Server) createHandlerCreateNode() http.HandlerFunc {
+func (s *APIServer) handlerCreateNode() http.HandlerFunc {
 	type request struct {
 		Name     string `json:"name"`
 		NodeType string `json:"node_type"`
@@ -60,7 +68,7 @@ func (s *Server) createHandlerCreateNode() http.HandlerFunc {
 	}
 }
 
-func (s *Server) createHandlerGetAllNodes() http.HandlerFunc {
+func (s *APIServer) handlerGetAllNodes() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		rslt, err := s.repo.GetNodes()
@@ -76,11 +84,11 @@ func (s *Server) createHandlerGetAllNodes() http.HandlerFunc {
 	}
 }
 
-func (s *Server) createHandlerGetNode() http.HandlerFunc {
+func (s *APIServer) handlerGetNodeById() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		id, err := strconv.Atoi(mux.Vars(r)["id"])
+		id, err := strconv.Atoi(r.PathValue("id"))
 		if err != nil {
 			s.logger.Error(err)
 			return
@@ -99,6 +107,120 @@ func (s *Server) createHandlerGetNode() http.HandlerFunc {
 	}
 }
 
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.router.ServeHTTP(w, r)
+func (s *APIServer) handlerCreateEdge() http.HandlerFunc {
+	type request struct {
+		LeftID  int `json:"left_id"`
+		RightID int `json:"right_id"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		re := request{}
+
+		if err := json.NewDecoder(r.Body).Decode(&re); err != nil {
+			s.logger.Error(err)
+			return
+		}
+
+		edge := model.Edge{LeftID: re.LeftID, RightID: re.RightID}
+
+		if err := s.repo.CreateEdge(&edge); err != nil {
+			s.logger.Error(err)
+			return
+		}
+
+	}
 }
+
+func (s *APIServer) handlerGetAllEdges() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		rslt, err := s.repo.GetEdges()
+
+		if err != nil {
+			s.logger.Error(err)
+			return
+		}
+
+		if rslt != nil {
+			json.NewEncoder(w).Encode(rslt)
+		}
+	}
+}
+
+func (s *APIServer) handlerGetEdgesByNodeID() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.Atoi(r.PathValue("id"))
+		if err != nil {
+			s.logger.Error(err)
+			return
+		}
+
+		rslt, err := s.repo.GetInputEdgesByNodeID(id)
+
+		if err != nil {
+			s.logger.Error(err)
+			return
+		}
+
+		rslt1, err := s.repo.GetOutputEdgesByNodeID(id)
+
+		if err != nil {
+			s.logger.Error(err)
+			return
+		}
+
+		rslt = append(rslt, rslt1...)
+
+		if rslt != nil {
+			json.NewEncoder(w).Encode(rslt)
+		}
+	}
+}
+
+// func (s *APIServer) handlerGetEdgesByNodeID() http.HandlerFunc {
+
+// 	return func(w http.ResponseWriter, r *http.Request) {
+
+// 		left_id_str := r.URL.Query().Get("left_id")
+// 		right_id_str := r.URL.Query().Get("right_id")
+
+// 		switch {
+// 		case (left_id_str != "") && (right_id_str == ""):
+// 			left_id, err := strconv.Atoi(left_id_str)
+// 			if err != nil {
+// 				s.logger.Error(err)
+// 				return
+// 			}
+
+// 			rslt, err := s.repo.GetInputEdgesByNodeID(left_id)
+
+// 			if err != nil {
+// 				s.logger.Error(err)
+// 				return
+// 			}
+
+// 			if rslt != nil {
+// 				json.NewEncoder(w).Encode(rslt)
+// 			}
+
+// 		case (left_id_str == "") && (right_id_str != ""):
+// 			right_id, err := strconv.Atoi(right_id_str)
+// 			if err != nil {
+// 				s.logger.Error(err)
+// 				return
+// 			}
+
+// 			rslt, err := s.repo.GetOutputEdgesByNodeID(right_id)
+
+// 			if err != nil {
+// 				s.logger.Error(err)
+// 				return
+// 			}
+
+// 			if rslt != nil {
+// 				json.NewEncoder(w).Encode(rslt)
+// 			}
+// 		}
+
+// 	}
+// }
