@@ -1,0 +1,1 @@
+curl -X POST --data '{"name": "black_deleter", "node_type": "op"}' \http://localhost:8080/nodes
