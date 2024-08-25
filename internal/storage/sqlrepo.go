@@ -55,6 +55,26 @@ func (r SQLRepo) GetNode(id int) (*model.Node, error) {
 	return &n, nil
 }
 
+func (r SQLRepo) GetNodeByFilterName(name string) ([]model.Node, error) {
+	rslt := make([]model.Node, 0)
+
+	rows, err := r.db.Query("SELECT id, name, node_type FROM node WHERE name like '%?%' ", name)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		n := model.Node{}
+		if errz := rows.Scan(&n.ID, &n.Name, &n.NodeType); errz != nil {
+			return nil, errz
+		}
+		rslt = append(rslt, n)
+	}
+
+	return rslt, nil
+}
+
 func (r SQLRepo) CreateEdge(e *model.Edge) error {
 	if _, err := r.db.Exec(
 		"INSERT INTO edge (left_id, right_id) VALUES ($1, $2)",
