@@ -34,7 +34,7 @@ func (s *APIServer) Run() error {
 	}
 
 	router.HandleFunc("POST /nodes", s.handlerCreateNode())
-	router.HandleFunc("GET /nodes", s.handlerGetAllNodes())
+	//router.HandleFunc("GET /nodes", s.handlerGetAllNodes())
 	router.HandleFunc("GET /nodes/{id}", s.handlerGetNodeById())
 	router.HandleFunc("GET /nodes", s.handlerGetNodesByFilter())
 
@@ -69,26 +69,45 @@ func (s *APIServer) handlerCreateNode() http.HandlerFunc {
 	}
 }
 
-func (s *APIServer) handlerGetAllNodes() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+// func (s *APIServer) handlerGetAllNodes() http.HandlerFunc {
+// 	return func(w http.ResponseWriter, r *http.Request) {
 
-		rslt, err := s.repo.GetNodes()
+// 		rslt, err := s.repo.GetNodes()
 
-		if err != nil {
-			s.logger.Error(err)
-			return
-		}
+// 		if err != nil {
+// 			s.logger.Error(err)
+// 			return
+// 		}
 
-		if rslt != nil {
-			json.NewEncoder(w).Encode(rslt)
-		}
-	}
-}
+// 		if rslt != nil {
+// 			json.NewEncoder(w).Encode(rslt)
+// 		}
+// 	}
+// }
 
 func (s *APIServer) handlerGetNodesByFilter() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		name := r.URL.Query().Get("name")
+		params := r.URL.Query()
+
+		if len(params) == 0 {
+			rslt, err := s.repo.GetNodes()
+
+			if err != nil {
+				s.logger.Error(err)
+				return
+			}
+
+			if rslt != nil {
+				json.NewEncoder(w).Encode(rslt)
+			}
+
+			return
+
+		}
+
+		//name := r.URL.Query().Get("name")
+		name := params.Get("name")
 
 		rslt, err := s.repo.GetNodeByFilterName(name)
 
